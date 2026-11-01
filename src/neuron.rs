@@ -2,15 +2,16 @@ use std::fmt::Display;
 
 pub struct Neuron {
     n_inputs: usize,
+    activation: bool,
 
     weights: Vec<f32>,
     bias: f32,
 
-    _last_inputs: Option<Vec<f32>>
+    last_output: Option<f32>,
 }
 
 impl Neuron {
-    pub fn new(n_inputs: usize) -> Self {
+    pub fn new(n_inputs: usize, activation: bool) -> Self {
         let weights = (0..n_inputs)
             .map(|_| rand::random_range(-1.0..1.0))
             .collect();
@@ -18,10 +19,12 @@ impl Neuron {
 
         Self {
             n_inputs,
+            activation,
 
             weights,
             bias,
-            _last_inputs: None
+
+            last_output: None,
         }
     }
 
@@ -33,19 +36,31 @@ impl Neuron {
             sum += self.weights[i] * inputs[i];
         }
 
-        self._last_inputs = Some(inputs.clone());
-        sum + self.bias
+        let mut x = sum + self.bias;
+        if self.activation {
+            x = x.tanh()
+        }
+        self.last_output = Some(x);
+
+        x
     }
 
-    pub fn backward(&mut self, gradient: f32) {
-        if let Some(inputs) = &self._last_inputs {
+    pub fn backward(&mut self, last_inputs: &Vec<f32>, grad: f32) -> Vec<f32> {
+        if let Some(last_output) = self.last_output {
+            let mut back_gradients = Vec::<f32>::with_capacity(self.n_inputs);
+            let val = if self.activation {
+                1.0 - last_output.powi(2)
+            } else {
+                1.0
+            };
             for i in 0..self.n_inputs {
-                self.weights[i] -= inputs[i] * gradient;
+                back_gradients.push(self.weights[i] * val * grad);
+                self.weights[i] -= last_inputs[i] * val * grad * 0.00005;
             }
-            self.bias -= gradient;
-        } else {
-            println!("Neuron.forward() not called yet")
+            self.bias -= val * grad * 0.00005;
+            return back_gradients;
         }
+        panic!("run forward before running backward")
     }
 }
 
