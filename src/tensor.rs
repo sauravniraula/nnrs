@@ -1,4 +1,5 @@
 use std::{
+    default,
     ops::{Add, Sub},
     rc::Rc,
 };
@@ -9,6 +10,7 @@ pub struct TensorNode<T> {
     dim: Vec<u16>,
 
     op: Option<TensorOperation<T>>,
+    gradient: f32,
 }
 
 #[derive(Debug)]
@@ -19,8 +21,8 @@ pub enum TensorOperationType {
 
 #[derive(Debug)]
 pub struct TensorOperation<T> {
-    kind: TensorOperationType,
-    parents: Vec<Tensor<T>>,
+    pub kind: TensorOperationType,
+    pub parents: Vec<Tensor<T>>,
 }
 
 #[derive(Debug)]
@@ -34,10 +36,19 @@ impl<T> Tensor<T> {
             data,
             dim,
             op: None,
+            gradient: 0.0,
         };
         Self {
             node: Rc::new(node),
         }
+    }
+
+    pub fn get_op(&self) -> &Option<TensorOperation<T>> {
+        &self.node.op
+    }
+
+    pub fn get_data(&self) -> &Vec<T> {
+        &self.node.data
     }
 }
 
@@ -72,6 +83,7 @@ where
                     kind: TensorOperationType::ADD,
                     parents: vec![self.clone(), rhs.clone()],
                 }),
+                gradient: 0.0,
             }),
         }
     }
@@ -100,6 +112,7 @@ where
                     kind: TensorOperationType::SUB,
                     parents: vec![self.clone(), rhs.clone()],
                 }),
+                gradient: 0.0
             }),
         }
     }

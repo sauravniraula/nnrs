@@ -1,4 +1,4 @@
-use nnrs::{layer::Layer, tensor::Tensor};
+use nnrs::{draw::draw_computation_graph, layer::Layer, tensor::Tensor};
 
 fn main() {
     // let inputs = vec![1_f32, 2_f32];
@@ -21,11 +21,11 @@ fn main() {
     //     l1.backward(&l2_grads);
     // }
 
-    let t1 = Tensor::new([1.0, 2.0].into(), [1, 2].into());
-    let t2 = Tensor::new([1.0, 2.0].into(), [1, 2].into());
+    let t1 = Tensor::new([2.0].into(), [1, 1].into());
+    let t2 = Tensor::new([2.0].into(), [1, 1].into());
     let t3 = &t1 + &t2;
-    let t4 = Tensor::new([2.0, 2.0].into(), [1, 2].into());
+    let t4 = Tensor::new([2.0].into(), [1, 1].into());
     let t5 = &t3 - &t4;
 
-
+    draw_computation_graph(&t5).unwrap();
 }
