@@ -1,9 +1,9 @@
+use num_traits::Float;
 use std::{
-    fmt::Debug,
-    ops::{Add, Div, Mul, Sub},
+    fmt::{Debug, Display},
+    ops::AddAssign,
 };
 
-pub trait Number: Sized {}
+pub trait Number: Float + Sized + Debug + Display + AddAssign {}
 
-impl Number for f32 {}
-impl Number for f64 {}
+impl<T> Number for T where T: Float + Sized + Debug + Display + AddAssign {}

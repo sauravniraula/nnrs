@@ -1,4 +1,4 @@
-use std::{fmt::Debug, io::Error};
+use std::{collections::HashMap, io::Error};
 
 use petgraph::{
     Graph,
@@ -6,35 +6,37 @@ use petgraph::{
     graph::NodeIndex,
 };
 
-use crate::tensor::Tensor;
+use crate::{number::Number, tensor::Tensor};
 
-pub fn draw_computation_graph<T: Debug>(tensor: &Tensor<T>) -> Result<(), Error> {
+pub fn draw_computation_graph<T: Number>(tensor: &Tensor<T>) -> Result<(), Error> {
     let mut graph = Graph::<String, String>::new();
+    let mut visited: HashMap<Tensor<T>, NodeIndex> = HashMap::new();
 
-    fn add_tensor<T: Debug>(graph: &mut Graph<String, String>, t: &Tensor<T>) -> NodeIndex {
-        let mut nodes: Vec<NodeIndex> = vec![];
-        let mut op_node: Option<NodeIndex> = None;
+    fn add_tensor<T: Number>(
+        visited: &mut HashMap<Tensor<T>, NodeIndex>,
+        graph: &mut Graph<String, String>,
+        t: &Tensor<T>,
+    ) -> NodeIndex {
+        if let Some(node) = visited.get(t) {
+            return *node;
+        }
+
+        let node = graph.add_node(format!("{:?} | {:?}", t.get_data(), t.get_gradients()));
+        visited.insert(t.clone(), node);
+
         if let Some(op) = t.get_op() {
-            op.parents.iter().for_each(|p| {
-                nodes.push(add_tensor(graph, p));
-            });
-            op_node = Some(graph.add_node(format!("{:?}", op.kind)));
-        }
+            let op_node = graph.add_node(format!("{:?}", op.kind));
+            graph.add_edge(op_node, node, "".into());
 
-        let p_node = graph.add_node(format!("{:?}", t.get_data()));
-        let c_node = if let Some(o) = op_node {
-            graph.add_edge(o, p_node, "".into());
-            o
-        } else {
-            p_node
-        };
-        for each_node in nodes {
-            graph.add_edge(each_node, c_node, "".into());
+            for parent in &op.parents {
+                let p_node = add_tensor(visited, graph, parent);
+                graph.add_edge(p_node, op_node, "".into());
+            }
         }
-        p_node
+        node
     }
 
-    add_tensor(&mut graph, tensor);
+    add_tensor(&mut visited, &mut graph, tensor);
 
     let dot = format!(
         "{}",
