@@ -11,7 +11,7 @@ use crate::number::Number;
 
 #[derive(Debug)]
 pub struct TensorNode<T: Number> {
-    data: Vec<T>,
+    data: RefCell<Vec<T>>,
     dim: Vec<u16>,
     size: usize,
 
@@ -23,7 +23,7 @@ impl<T: Number> TensorNode<T> {
     pub fn new(data: Vec<T>, dim: Vec<u16>, op: Option<TensorOperation<T>>) -> Self {
         let size = dim.iter().product::<u16>() as usize;
         Self {
-            data,
+            data: RefCell::new(data),
             dim,
             size,
             op,
@@ -62,8 +62,8 @@ impl<T: Number> Tensor<T> {
         &self.node.op
     }
 
-    pub fn get_data(&self) -> &Vec<T> {
-        &self.node.data
+    pub fn get_data(&self) -> Ref<'_, Vec<T>> {
+        self.node.data.borrow()
     }
 
     pub fn get_gradients(&self) -> Ref<'_, Vec<T>> {
@@ -79,41 +79,13 @@ impl<T: Number> Tensor<T> {
             .iter_mut()
             .zip(gradients)
         {
-            *a = (*a + *b) * scale;
+            *a = *a + (*b * scale);
         }
     }
 
-    pub fn backward(&self, seed: T) {
-        let sorted = self.topo_sort(true);
-        self.set_gradients(vec![seed; self.node.size]);
-
-        for each in sorted.iter().rev() {
-            if let Some(op) = each.get_op() {
-                let grad = each.get_gradients();
-                let p1 = &op.parents[0];
-                let p2 = &op.parents[1];
-
-                match op.kind {
-                    TensorOperationType::ADD => {
-                        p1.add_gradients(&grad, T::one());
-                        p2.add_gradients(&grad, T::one());
-                    }
-                    TensorOperationType::SUB => {
-                        p1.add_gradients(&grad, T::one());
-                        p2.add_gradients(&grad, -T::one());
-                    }
-                    TensorOperationType::MUL => {
-                        let a = p1.get_data()[0];
-                        let b = p2.get_data()[0];
-
-                        p1.add_gradients(&grad, b);
-                        p2.add_gradients(&grad, a);
-                    }
-                }
-            }
-
-            println!("{:?}", each);
-            println!("---------------------------------")
+    pub fn add_data(&self, data: &Vec<T>, scale: T) {
+        for (a, b) in (*self.node.data.borrow_mut()).iter_mut().zip(data) {
+            *a = *a + (*b * scale);
         }
     }
 
@@ -145,6 +117,49 @@ impl<T: Number> Tensor<T> {
         }
         topo_sort_inner(&mut visited, &mut tensors, self, reset_gradients);
         tensors
+    }
+
+    pub fn backward(&self, seed: T) {
+        let sorted = self.topo_sort(true);
+        self.set_gradients(vec![seed; self.node.size]);
+
+        for each in sorted.iter().rev() {
+            if let Some(op) = each.get_op() {
+                let grad = each.get_gradients();
+                let p1 = &op.parents[0];
+                let p2 = &op.parents[1];
+
+                match op.kind {
+                    TensorOperationType::ADD => {
+                        p1.add_gradients(&grad, T::one());
+                        p2.add_gradients(&grad, T::one());
+                    }
+                    TensorOperationType::SUB => {
+                        p1.add_gradients(&grad, T::one());
+                        p2.add_gradients(&grad, -T::one());
+                    }
+                    TensorOperationType::MUL => {
+                        let a = p1.get_data()[0];
+                        let b = p2.get_data()[0];
+
+                        p1.add_gradients(&grad, b);
+                        p2.add_gradients(&grad, a);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn step(&self, learning_rate: T) {
+        let sorted = self.topo_sort(false);
+        let mut i = 0;
+        for each in sorted.iter().rev() {
+            if (i == 5) {
+                return;
+            }
+            i += 1;
+            each.add_data(&each.get_gradients(), -T::one() * learning_rate);
+        }
     }
 }
 
@@ -181,8 +196,9 @@ where
             node: Rc::new(TensorNode::new(
                 self.node
                     .data
+                    .borrow()
                     .iter()
-                    .zip(rhs.node.data.iter())
+                    .zip(rhs.node.data.borrow().iter())
                     .map(|(a, b)| a + b)
                     .collect(),
                 self.node.dim.clone(),
@@ -208,8 +224,9 @@ where
             node: Rc::new(TensorNode::new(
                 self.node
                     .data
+                    .borrow()
                     .iter()
-                    .zip(rhs.node.data.iter())
+                    .zip(rhs.node.data.borrow().iter())
                     .map(|(a, b)| a - b)
                     .collect(),
                 self.node.dim.clone(),
@@ -235,8 +252,9 @@ where
             node: Rc::new(TensorNode::new(
                 self.node
                     .data
+                    .borrow()
                     .iter()
-                    .zip(rhs.node.data.iter())
+                    .zip(rhs.node.data.borrow().iter())
                     .map(|(a, b)| a * b)
                     .collect(),
                 self.node.dim.clone(),
