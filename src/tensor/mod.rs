@@ -2,17 +2,20 @@ use std::{
     cell::{Ref, RefCell},
     collections::HashSet,
     hash::Hash,
-    ops::{Add, Mul, Sub},
+    ops::Range,
     rc::Rc,
     vec,
 };
 
 use crate::number::Number;
 
+mod broadcast;
+mod matmul;
+
 #[derive(Debug)]
 pub struct TensorNode<T: Number> {
     data: RefCell<Vec<T>>,
-    dim: Vec<u16>,
+    dim: Vec<usize>,
     size: usize,
 
     op: Option<TensorOperation<T>>,
@@ -20,8 +23,8 @@ pub struct TensorNode<T: Number> {
 }
 
 impl<T: Number> TensorNode<T> {
-    pub fn new(data: Vec<T>, dim: Vec<u16>, op: Option<TensorOperation<T>>) -> Self {
-        let size = dim.iter().product::<u16>() as usize;
+    pub fn new(data: Vec<T>, dim: Vec<usize>, op: Option<TensorOperation<T>>) -> Self {
+        let size = dim.iter().product();
         Self {
             data: RefCell::new(data),
             dim,
@@ -37,6 +40,7 @@ pub enum TensorOperationType {
     ADD,
     SUB,
     MUL,
+    MATMUL,
 }
 
 #[derive(Debug)]
@@ -45,17 +49,53 @@ pub struct TensorOperation<T: Number> {
     pub parents: Vec<Tensor<T>>,
 }
 
+/// A row-major tensor with reverse-mode automatic differentiation.
+///
+/// Elementwise `+`, `-`, and `*` align shapes from the right: each pair of axes
+/// must be equal or have length one. Missing axes are treated as length one.
+/// Scalar tensors (shape `[]`) broadcast to any shape. Backward sums gradients
+/// over all axes expanded by broadcasting. Incompatible shapes panic.
+/// Both owned and borrowed operands are supported.
+///
+/// ```
+/// use nnrs::tensor::Tensor;
+///
+/// let x = Tensor::<f64>::ones(vec![2, 3]);
+/// let weights = Tensor::<f64>::ones(vec![3, 4]);
+/// let bias = Tensor::<f64>::zeros(vec![4]);
+/// let output = x.matmul(&weights) + &bias;
+/// assert_eq!(output.get_dim(), &[2, 4]);
+/// output.backward(1.0);
+/// assert_eq!(*bias.get_gradients(), vec![2.0; 4]);
+/// ```
 #[derive(Debug)]
 pub struct Tensor<T: Number> {
     node: Rc<TensorNode<T>>,
 }
 
 impl<T: Number> Tensor<T> {
-    pub fn new(data: Vec<T>, dim: Vec<u16>) -> Self {
+    pub fn new(data: Vec<T>, dim: Vec<usize>) -> Self {
         let node = TensorNode::new(data, dim, None);
         Self {
             node: Rc::new(node),
         }
+    }
+
+    pub fn new_filled(with: impl Fn() -> T, dim: Vec<usize>) -> Self {
+        let size = dim.iter().product();
+        Self::new((0..size).map(|_| with()).collect(), dim)
+    }
+
+    pub fn zeros(dim: Vec<usize>) -> Self {
+        Self::new_filled(|| T::zero(), dim)
+    }
+
+    pub fn ones(dim: Vec<usize>) -> Self {
+        Self::new_filled(|| T::one(), dim)
+    }
+
+    pub fn random(range: Range<T>, dim: Vec<usize>) -> Self {
+        Self::new_filled(|| rand::random_range(range.clone()), dim)
     }
 
     pub fn get_op(&self) -> &Option<TensorOperation<T>> {
@@ -64,6 +104,10 @@ impl<T: Number> Tensor<T> {
 
     pub fn get_data(&self) -> Ref<'_, Vec<T>> {
         self.node.data.borrow()
+    }
+
+    pub fn get_dim(&self) -> &[usize] {
+        &self.node.dim
     }
 
     pub fn get_gradients(&self) -> Ref<'_, Vec<T>> {
@@ -130,20 +174,13 @@ impl<T: Number> Tensor<T> {
                 let p2 = &op.parents[1];
 
                 match op.kind {
-                    TensorOperationType::ADD => {
-                        p1.add_gradients(&grad, T::one());
-                        p2.add_gradients(&grad, T::one());
+                    TensorOperationType::ADD
+                    | TensorOperationType::SUB
+                    | TensorOperationType::MUL => {
+                        p1.elementwise_backward(p2, &grad, &op.kind);
                     }
-                    TensorOperationType::SUB => {
-                        p1.add_gradients(&grad, T::one());
-                        p2.add_gradients(&grad, -T::one());
-                    }
-                    TensorOperationType::MUL => {
-                        let a = p1.get_data()[0];
-                        let b = p2.get_data()[0];
-
-                        p1.add_gradients(&grad, b);
-                        p2.add_gradients(&grad, a);
+                    TensorOperationType::MATMUL => {
+                        p1.matmul_backward(p2, &grad);
                     }
                 }
             }
@@ -151,15 +188,7 @@ impl<T: Number> Tensor<T> {
     }
 
     pub fn step(&self, learning_rate: T) {
-        let sorted = self.topo_sort(false);
-        let mut i = 0;
-        for each in sorted.iter().rev() {
-            if (i == 5) {
-                return;
-            }
-            i += 1;
-            each.add_data(&each.get_gradients(), -T::one() * learning_rate);
-        }
+        self.add_data(&self.get_gradients(), -T::one() * learning_rate);
     }
 }
 
@@ -179,90 +208,6 @@ impl<T: Number> Clone for Tensor<T> {
     fn clone(&self) -> Self {
         Self {
             node: self.node.clone(),
-        }
-    }
-}
-
-impl<T: Number> Add for &Tensor<T>
-where
-    for<'a> &'a T: Add<&'a T, Output = T>,
-{
-    type Output = Tensor<T>;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.node.dim, rhs.node.dim);
-
-        Tensor {
-            node: Rc::new(TensorNode::new(
-                self.node
-                    .data
-                    .borrow()
-                    .iter()
-                    .zip(rhs.node.data.borrow().iter())
-                    .map(|(a, b)| a + b)
-                    .collect(),
-                self.node.dim.clone(),
-                Some(TensorOperation {
-                    kind: TensorOperationType::ADD,
-                    parents: vec![self.clone(), rhs.clone()],
-                }),
-            )),
-        }
-    }
-}
-
-impl<T: Number> Sub for &Tensor<T>
-where
-    for<'a> &'a T: Sub<&'a T, Output = T>,
-{
-    type Output = Tensor<T>;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.node.dim, rhs.node.dim);
-
-        Tensor {
-            node: Rc::new(TensorNode::new(
-                self.node
-                    .data
-                    .borrow()
-                    .iter()
-                    .zip(rhs.node.data.borrow().iter())
-                    .map(|(a, b)| a - b)
-                    .collect(),
-                self.node.dim.clone(),
-                Some(TensorOperation {
-                    kind: TensorOperationType::SUB,
-                    parents: vec![self.clone(), rhs.clone()],
-                }),
-            )),
-        }
-    }
-}
-
-impl<T: Number> Mul for &Tensor<T>
-where
-    for<'a> &'a T: Mul<&'a T, Output = T>,
-{
-    type Output = Tensor<T>;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.node.dim, rhs.node.dim);
-
-        Tensor {
-            node: Rc::new(TensorNode::new(
-                self.node
-                    .data
-                    .borrow()
-                    .iter()
-                    .zip(rhs.node.data.borrow().iter())
-                    .map(|(a, b)| a * b)
-                    .collect(),
-                self.node.dim.clone(),
-                Some(TensorOperation {
-                    kind: TensorOperationType::MUL,
-                    parents: vec![self.clone(), rhs.clone()],
-                }),
-            )),
         }
     }
 }
