@@ -1,41 +1,31 @@
-use nnrs::{draw::draw_computation_graph, tensor::Tensor};
+use nnrs::{dense_layer::DenseLayer, tensor::Tensor};
 use num_traits::pow;
 
 fn main() {
-    let goal = 10.0;
+    let goal = 10.0_f32;
 
-    let t1 = Tensor::new([2.0].into(), [1, 1].into());
-    let t2 = Tensor::new([-5.0].into(), [1, 1].into());
-    let t3 = Tensor::new([3.0].into(), [1, 1].into());
-    let t4 = Tensor::new([9.0].into(), [1, 1].into());
-    let t5 = Tensor::new([4.0].into(), [1, 1].into());
-    let t6 = Tensor::new([7.0].into(), [1, 1].into());
-    let t11 = Tensor::new([2.0].into(), [1, 1].into());
-    let t12 = Tensor::new([-3.0].into(), [1, 1].into());
-    let t13 = Tensor::new([1.0].into(), [1, 1].into());
+    let layer1 = DenseLayer::<f32>::new(2, 10);
+    let layer2 = DenseLayer::<f32>::new(10, 1);
+    let x = Tensor::new(
+        vec![1.0_f32, 2.0_f32, 1.9_f32, 8.4_f32, 3.5_f32, 7.0_f32],
+        vec![3, 2],
+    );
 
-    let max_iteration = 10;
-
+    let max_iteration = 100;
     for i in 0..max_iteration {
-        let t7 = &t1 * &t2;
-        let t8 = &t7 + &t3;
-        let t9 = &t4 * &t5;
-        let t10 = &t9 + &t6;
-        let t14 = &t8 * &t11;
-        let t15 = &t10 * &t12;
-        let t16 = &t14 + &t15;
-        let t17 = &t16 + &t13;
+        let out1 = layer1.forward(&x);
+        let out2 = layer2.forward(&out1);
 
-        let seed = -(goal - t17.get_data()[0]);
-        let loss = pow(-seed, 2);
+        let out = out2.get_data()[0];
+        let seed = out - goal;
+        let loss = pow(seed, 2);
+        println!(
+            "{}/{} Prediction: {}, Loss: {}",
+            i, max_iteration, out, loss
+        );
 
-        println!("---------------------------");
-        println!("{}/{}, Prediction: {}, Loss: {}", i+1, max_iteration, t17.get_data()[0], loss);
-
-        t17.backward(seed);
-        t17.step(0.0005);
-
-        draw_computation_graph(&t17).unwrap();
+        out2.backward(seed);
+        layer2.step(0.001);
+        layer1.step(0.001);
     }
-
 }
