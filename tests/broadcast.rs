@@ -175,7 +175,7 @@ fn empty_broadcast_outputs_leave_zero_input_gradients() {
         let b = Tensor::<f64>::ones(b_dim);
         for op in ['+', '-', '*'] {
             let output = apply(&a, &b, op);
-            assert_eq!(output.get_dim(), output_dim);
+            assert_eq!(output.get_dim(), &output_dim);
             assert!(output.get_data().is_empty());
             output.backward(1.0);
             assert_eq!(*a.get_gradients(), vec![0.0; a.get_data().len()]);

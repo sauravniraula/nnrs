@@ -42,7 +42,7 @@ fn promotes_vectors_and_removes_only_promoted_axes() {
         let a = Tensor::<f64>::ones(a_dim);
         let b = Tensor::<f64>::ones(b_dim);
         let output = a.matmul(&b);
-        assert_eq!(output.get_dim(), output_dim);
+        assert_eq!(output.get_dim(), &output_dim);
         assert!(output.get_data().iter().all(|&value| value == 3.0));
         output.backward(1.0);
         assert!(a.get_gradients().iter().all(|&value| value == da));
@@ -166,7 +166,7 @@ fn zero_sized_axes_produce_valid_outputs_and_gradients() {
         let a = Tensor::<f64>::ones(a_dim);
         let b = Tensor::<f64>::ones(b_dim);
         let output = a.matmul(&b);
-        assert_eq!(output.get_dim(), output_dim);
+        assert_eq!(output.get_dim(), &output_dim);
         assert_eq!(output.get_data().len(), output_dim.iter().product());
         assert!(output.get_data().iter().all(|&value| value == 0.0));
         output.backward(1.0);

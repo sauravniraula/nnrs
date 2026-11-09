@@ -49,25 +49,6 @@ pub struct TensorOperation<T: Number> {
     pub parents: Vec<Tensor<T>>,
 }
 
-/// A row-major tensor with reverse-mode automatic differentiation.
-///
-/// Elementwise `+`, `-`, and `*` align shapes from the right: each pair of axes
-/// must be equal or have length one. Missing axes are treated as length one.
-/// Scalar tensors (shape `[]`) broadcast to any shape. Backward sums gradients
-/// over all axes expanded by broadcasting. Incompatible shapes panic.
-/// Both owned and borrowed operands are supported.
-///
-/// ```
-/// use nnrs::tensor::Tensor;
-///
-/// let x = Tensor::<f64>::ones(vec![2, 3]);
-/// let weights = Tensor::<f64>::ones(vec![3, 4]);
-/// let bias = Tensor::<f64>::zeros(vec![4]);
-/// let output = x.matmul(&weights) + &bias;
-/// assert_eq!(output.get_dim(), &[2, 4]);
-/// output.backward(1.0);
-/// assert_eq!(*bias.get_gradients(), vec![2.0; 4]);
-/// ```
 #[derive(Debug)]
 pub struct Tensor<T: Number> {
     node: Rc<TensorNode<T>>,
@@ -106,7 +87,7 @@ impl<T: Number> Tensor<T> {
         self.node.data.borrow()
     }
 
-    pub fn get_dim(&self) -> &[usize] {
+    pub fn get_dim(&self) -> &Vec<usize> {
         &self.node.dim
     }
 
