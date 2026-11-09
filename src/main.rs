@@ -6,12 +6,9 @@ fn main() {
 
     let layer1 = DenseLayer::<f32>::new(2, 10);
     let layer2 = DenseLayer::<f32>::new(10, 1);
-    let x = Tensor::new(
-        vec![1.0_f32, 2.0_f32, 1.9_f32, 8.4_f32, 3.5_f32, 7.0_f32],
-        vec![3, 2],
-    );
+    let x = Tensor::new(vec![1.0_f32, 2.0_f32], vec![1, 2]);
 
-    let max_iteration = 1;
+    let max_iteration = 10;
     for i in 0..max_iteration {
         let out1 = layer1.forward(&x);
         let out2 = layer2.forward(&out1);
@@ -21,12 +18,15 @@ fn main() {
         let loss = pow(seed, 2);
         println!(
             "{}/{} Prediction: {}, Loss: {}",
-            i+1, max_iteration, out, loss
+            i + 1,
+            max_iteration,
+            out,
+            loss
         );
 
         out2.backward(seed);
-        layer2.step(0.001);
-        layer1.step(0.001);
+        layer2.step(0.01);
+        layer1.step(0.01);
 
         let _ = draw_computation_graph(&out2);
     }
