@@ -1,4 +1,4 @@
-use nnrs::{dense_layer::DenseLayer, tensor::Tensor};
+use nnrs::{dense_layer::DenseLayer, draw::draw_computation_graph, tensor::Tensor};
 use num_traits::pow;
 
 fn main() {
@@ -11,7 +11,7 @@ fn main() {
         vec![3, 2],
     );
 
-    let max_iteration = 100;
+    let max_iteration = 1;
     for i in 0..max_iteration {
         let out1 = layer1.forward(&x);
         let out2 = layer2.forward(&out1);
@@ -21,11 +21,13 @@ fn main() {
         let loss = pow(seed, 2);
         println!(
             "{}/{} Prediction: {}, Loss: {}",
-            i, max_iteration, out, loss
+            i+1, max_iteration, out, loss
         );
 
         out2.backward(seed);
         layer2.step(0.001);
         layer1.step(0.001);
+
+        let _ = draw_computation_graph(&out2);
     }
 }
