@@ -11,7 +11,7 @@ pub struct DenseLayer<T: Number> {
 impl<T: Number> DenseLayer<T> {
     pub fn new(n_inputs: usize, n_outputs: usize) -> Self {
         let weights = Tensor::random(-T::one()..T::one(), vec![n_inputs, n_outputs]);
-        let bias = Tensor::random(-T::one()..T::one(), vec![n_outputs]);
+        let bias = Tensor::random(-T::one()..T::one(), vec![1, n_outputs]);
         Self {
             n_inputs,
             n_outputs,
@@ -20,9 +20,15 @@ impl<T: Number> DenseLayer<T> {
         }
     }
 
-    pub fn forward(&self, inputs: &Tensor<T>) -> Tensor<T> {
-        assert_eq!(inputs.get_dim().last().unwrap(), &self.n_inputs);
-        inputs.matmul(&self.weights) + &self.bias
+    pub fn forward(&self, inputs: &Tensor<T>) -> Tensor<T>
+    where
+        for<'a> &'a T: std::ops::Add<&'a T, Output = T>,
+    {
+        assert_eq!(inputs.get_dim().len(), 2, "dense inputs must be 2-D");
+        assert_eq!(inputs.get_dim()[1], self.n_inputs);
+        let output = inputs.matmul(&self.weights);
+        let bias = Tensor::ones(vec![inputs.get_dim()[0], 1]).matmul(&self.bias);
+        &output + &bias
     }
 
     pub fn step(&self, learning_rate: T) {
